@@ -1,0 +1,181 @@
+name: analytics
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  analyze:
+    name: Code Metrics Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+      - name: Install dependencies
+        run: "python -m pip install --upgrade pip
+
+          pip install radon lizard pylint mccabe xenon pycodestyle cognitive-complexity
+          cloc scc
+
+          "
+      - id: measurement-4
+        name: Record Measurement After Install dependencies
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Install dependencies
+          task: get-measurement
+      - name: Check Python Files
+        run: 'echo "Found Python files:"
+
+          find . -type f -name "*.py" -not -path "*/.*"
+
+          '
+      - id: measurement-6
+        name: Record Measurement After Check Python Files
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Check Python Files
+          task: get-measurement
+      - name: Analyze with Radon
+        run: 'mkdir -p metrics
+
+          echo "=== Cyclomatic Complexity ===" > metrics_report.txt
+
+          find . -type f -name "*.py" -not -path "*/.*" | xargs --no-run-if-empty
+          radon cc --show-complexity --average >> metrics_report.txt || true
+
+
+          echo -e "\n=== Maintainability Index ===" >> metrics_report.txt
+
+          find . -type f -name "*.py" -not -path "*/.*" | xargs --no-run-if-empty
+          radon mi --show >> metrics_report.txt || true
+
+
+          echo -e "\n=== Raw Metrics ===" >> metrics_report.txt
+
+          find . -type f -name "*.py" -not -path "*/.*" | xargs --no-run-if-empty
+          radon raw --summary >> metrics_report.txt || true
+
+
+          echo -e "\n=== Halstead Metrics ===" >> metrics_report.txt
+
+          find . -type f -name "*.py" -not -path "*/.*" | xargs --no-run-if-empty
+          radon hal >> metrics_report.txt || true
+
+          '
+      - id: measurement-8
+        name: Record Measurement After Analyze with Radon
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Analyze with Radon
+          task: get-measurement
+      - name: Run Lizard Analysis
+        run: 'echo -e "\n=== Detailed Code Metrics ===" >> metrics_report.txt
+
+          lizard . --CCN 10 --length 100 --arguments 5 --modified --working_threads
+          1 >> metrics_report.txt || true
+
+          '
+      - id: measurement-10
+        name: Record Measurement After Run Lizard Analysis
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Run Lizard Analysis
+          task: get-measurement
+      - name: Analyze with Pylint
+        run: 'echo -e "\n=== Code Quality Metrics ===" >> metrics_report.txt
+
+          find . -type f -name "*.py" -not -path "*/.*" -exec pylint --output-format=text
+          {} + >> metrics_report.txt || true
+
+          '
+      - id: measurement-12
+        name: Record Measurement After Analyze with Pylint
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Analyze with Pylint
+          task: get-measurement
+      - name: Check complexity thresholds with Xenon
+        run: 'echo -e "\n=== Complexity Thresholds ===" >> metrics_report.txt
+
+          xenon --max-absolute A --max-modules A --max-average A . >> metrics_report.txt
+          || true
+
+          '
+      - id: measurement-14
+        name: Record Measurement After Check complexity thresholds with Xenon
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Check complexity thresholds with Xenon
+          task: get-measurement
+      - name: Generate detailed reports
+        run: '# JSON reports
+
+          find . -type f -name "*.py" -not -path "*/.*" | xargs --no-run-if-empty
+          radon cc --json > metrics/complexity.json || true
+
+          find . -type f -name "*.py" -not -path "*/.*" | xargs --no-run-if-empty
+          radon raw --json > metrics/raw_metrics.json || true
+
+          find . -type f -name "*.py" -not -path "*/.*" | xargs --no-run-if-empty
+          radon hal --json > metrics/halstead.json || true
+
+          lizard . --xml > metrics/lizard_report.xml || true
+
+          cp metrics_report.txt metrics/full_report.txt
+
+          '
+      - id: measurement-16
+        name: Record Measurement After Generate detailed reports
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Generate detailed reports
+          task: get-measurement
+      - name: Upload metrics results
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-metrics
+          path: metrics/
+      - if: always()
+        name: Convert JSON to CSV
+        run:
+          "JSON_FILE=\"/tmp/eco-ci/total-data.json\"\nif [ -f \"$JSON_FILE\" ];\
+          \ then\n  jq -r '(.[0] | keys_unsorted) as $keys | $keys, map([.[ $keys[]\
+          \ ]])[] | @csv' \"$JSON_FILE\" > eco_results.csv\nelse\n  echo \"No JSON\
+          \ output found, skipping conversion.\"\nfi\n"
+      - id: measurement-19
+        name: Record Measurement After Convert JSON to CSV
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          label: Convert JSON to CSV
+          task: get-measurement
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${{ steps.final-measurement.outputs.data-total-json }}' > total_energy_consumption.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption.json
